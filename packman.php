@@ -75,15 +75,15 @@ class Packman {
 		$encrypted = substr( $encrypted, 0, strlen( $pi['basename'] ) );
 		$encrypted = bin2hex( $encrypted );
 
-		return $pi['dirname'] . DIRECTORY_SEPARATOR . $encrypted . '.pkg';
+		return $pi['dirname'] . DIRECTORY_SEPARATOR . $encrypted;
 	}
 
 	private function _decrypt_filename( $filename='', $seed='' ) {
 		$pi = pathinfo( $filename );
 
-		$decrypted = hex2bin( $pi['filename'] );
+		$decrypted = hex2bin( $pi['basename'] );
 		$decrypted = $this->encrypt( $decrypted, $seed );
-		$decrypted = substr( $decrypted, 0, strlen( $pi['filename'] ) );
+		$decrypted = substr( $decrypted, 0, strlen( $pi['basename'] ) );
 
 		return $pi['dirname'] . DIRECTORY_SEPARATOR . $decrypted;
 	}
