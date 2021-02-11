@@ -5,7 +5,7 @@ class Packman {
 
 	function __construct( string $algorytm='md5' ) {
 		if ( !in_array( $algorytm, hash_algos() ) ) {
-			throw new Exception( 'Unknown hashing algorythm' );
+			throw new Exception( 'Unknown hashing algorythm.' );
 		}
 
 		$this->_algorythm = $algorytm;
@@ -13,12 +13,14 @@ class Packman {
 	}
 
 	function read_password( string $prompt='' ) {
-		if ( !empty( $prompt ) ) echo "{$prompt}";
+		// todo: hide entered characters
+
+		if ( !empty( $prompt ) ) echo $prompt;
 
 		$password = readline();
 
 		if ( empty( $password ) ) {
-			throw new Exception( 'Empty password' );
+			throw new Exception( 'Empty password.' );
 		}
 
 		return $password;
