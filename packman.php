@@ -12,54 +12,56 @@ class Packman {
 		$this->_digest_size = strlen( hash( $this->_algorythm, '', $row=true ) );
 	}
 
-	function read_seed( string $prompt='' ) {
+	function read_password( string $prompt='' ) {
 		if ( !empty( $prompt ) ) echo "{$prompt}";
 
-		$seed = readline();
+		$password = readline();
 
-		if ( empty( $seed ) ) {
-			throw new Exception( 'Empty seed' );
+		if ( empty( $password ) ) {
+			throw new Exception( 'Empty password' );
 		}
 
-		return $seed;
+		return $password;
 	}
 
-	function encrypt_file( string $filename='', string $seed='' ) {
+	function encrypt_file( string $filename='', string $password='' ) {
 		$content = file_get_contents( $filename );
-		$iv = hash( $this->_algorythm, $content, $row=true );
+		$imprint = hash( $this->_algorythm, $password . $content, $row=true );
 		
-		$encrypted = $this->encrypt( $content, $seed . $iv ) . $iv;
+		$encrypted = $this->encrypt( $content, $password . $imprint ) . $imprint;
 
-		$filename = $this->_encrypt_filename( $filename, md5( $seed . $iv ) );
+		$filename = $this->_encrypt_filename( $filename, md5( $password . $imprint ) );
 
 		file_put_contents( $filename, $encrypted );
 	}
 
-	function decrypt_file( string $filename='', string $seed='' ) {
+	function decrypt_file( string $filename='', string $password='' ) {
 		$content = file_get_contents( $filename );
-		$iv = substr( $content, -$this->_digest_size, $this->_digest_size );
+		$imprint = substr( $content, -$this->_digest_size, $this->_digest_size );
 		$content = substr( $content, 0, -$this->_digest_size );
 		
-		$decrypted = $this->encrypt( $content, $seed . $iv );
+		$decrypted = $this->encrypt( $content, $password . $imprint );
 		
-		if ( $iv !== hash( $this->_algorythm, $decrypted, $row=true ) ) {
+		$current_imprint = hash( $this->_algorythm, $password . $decrypted, $row=true );
+
+		if ( $imprint !== $current_imprint ) {
 			throw new Exception( 'Decryption failed.' );
 		}
 
-		$filename = $this->_decrypt_filename( $filename, md5( $seed . $iv ) );
+		$filename = $this->_decrypt_filename( $filename, md5( $password . $imprint ) );
 
 		file_put_contents( $filename, $decrypted );
 	}
 
-	function encrypt( string $message='', string $seed='' ) {
+	function encrypt( string $message='', string $password='' ) {
 		$size = strlen( $message );
 		$size = $size + ( $this->_digest_size - ( $size % $this->_digest_size ) );
 
 		$key = '';
-		$hash = hash( $this->_algorythm, $seed, $row=true );
+		$hash = hash( $this->_algorythm, $password, $row=true );
 
 		for ( $i = 0; $i < $size; $i += $this->_digest_size ) {
-			$hash = hash( $this->_algorythm, $seed . $hash, $row=true );
+			$hash = hash( $this->_algorythm, $password . $hash, $row=true );
 			$key .= $hash;
 		}
 
@@ -68,24 +70,35 @@ class Packman {
 
 	/* private */
 
-	private function _encrypt_filename( string $filename='', string $seed='' ) {
+	private function _encrypt_filename( string $filename='', string $password='' ) {
 		$pi = pathinfo( $filename );
 
-		$encrypted = $this->encrypt( $pi['basename'], $seed );
+		$encrypted = $this->encrypt( $pi['basename'], $password );
 		$encrypted = substr( $encrypted, 0, strlen( $pi['basename'] ) );
-		$encrypted = bin2hex( $encrypted );
+		$encrypted = $this->_base64url_encode( $encrypted );
 
 		return $pi['dirname'] . DIRECTORY_SEPARATOR . $encrypted;
 	}
 
-	private function _decrypt_filename( $filename='', $seed='' ) {
+	private function _decrypt_filename( $filename='', $password='' ) {
 		$pi = pathinfo( $filename );
 
-		$decrypted = hex2bin( $pi['basename'] );
-		$decrypted = $this->encrypt( $decrypted, $seed );
+		$decrypted = $this->_base64url_decode( $pi['basename'] );
+		$decrypted = $this->encrypt( $decrypted, $password );
 		$decrypted = substr( $decrypted, 0, strlen( $pi['basename'] ) );
 
 		return $pi['dirname'] . DIRECTORY_SEPARATOR . $decrypted;
+	}
+
+	private function _base64url_encode( $data ) {
+		return rtrim( strtr( base64_encode( $data ), '+/', '-_' ), '=' );
+	}
+
+	private function _base64url_decode( $data ) {
+		return base64_decode(
+			strtr( $data, '-_', '+/' ) .
+			str_repeat( '=', 3 - ( 3 + strlen( $data ) ) % 4 )
+		);
 	}
 
 }

@@ -11,16 +11,16 @@ require_once __DIR__ . '/packman.php';
 try {
 	$packman = new Packman( 'sha3-512' );
 
-	$seed = $packman->read_seed( "Password:\n" );
+	$password = $packman->read_password( "Password:\n" );
 
 	$started = microtime( true );
 
 	switch ( $argv[1] ) {
 		case 'encrypt':
-			$packman->encrypt_file( $argv[2], $seed );
+			$packman->encrypt_file( $argv[2], $password );
 			break;
 		case 'decrypt':
-			$packman->decrypt_file( $argv[2], $seed );
+			$packman->decrypt_file( $argv[2], $password );
 			break;
 	}
 
