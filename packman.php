@@ -12,9 +12,7 @@ class Packman {
 		$this->_digest_size = strlen( hash( $this->_algorythm, '', $row=true ) );
 	}
 
-	function read_password( string $prompt='' ) {
-		// todo: hide entered characters
-
+	function read_password( string $prompt='' ): string {
 		if ( !empty( $prompt ) ) echo $prompt;
 
 		$password = readline();
@@ -26,24 +24,20 @@ class Packman {
 		return $password;
 	}
 
-	function encrypt_file( string $filename='', string $password='' ) {
+	function encrypt_file( string $filename='', string $password='' ): void {
 		$content = file_get_contents( $filename );
 		$imprint = hash( $this->_algorythm, $password . $content, $row=true );
-		
 		$encrypted = $this->encrypt( $content, $password . $imprint ) . $imprint;
-
 		$filename = $this->_encrypt_filename( $filename, md5( $password . $imprint ) );
 
 		file_put_contents( $filename, $encrypted );
 	}
 
-	function decrypt_file( string $filename='', string $password='' ) {
+	function decrypt_file( string $filename='', string $password='' ): void {
 		$content = file_get_contents( $filename );
 		$imprint = substr( $content, -$this->_digest_size, $this->_digest_size );
 		$content = substr( $content, 0, -$this->_digest_size );
-		
 		$decrypted = $this->encrypt( $content, $password . $imprint );
-		
 		$current_imprint = hash( $this->_algorythm, $password . $decrypted, $row=true );
 
 		if ( $imprint !== $current_imprint ) {
@@ -55,7 +49,7 @@ class Packman {
 		file_put_contents( $filename, $decrypted );
 	}
 
-	function encrypt( string $message='', string $password='' ) {
+	function encrypt( string &$message='', string $password='' ): string {
 		$size = strlen( $message );
 		$size = $size + ( $this->_digest_size - ( $size % $this->_digest_size ) );
 
@@ -70,9 +64,7 @@ class Packman {
 		return $message ^ $key;
 	}
 
-	/* private */
-
-	private function _encrypt_filename( string $filename='', string $password='' ) {
+	private function _encrypt_filename( string $filename='', string $password='' ): string {
 		$pi = pathinfo( $filename );
 
 		$encrypted = $this->encrypt( $pi['basename'], $password );
@@ -82,7 +74,7 @@ class Packman {
 		return $pi['dirname'] . DIRECTORY_SEPARATOR . $encrypted;
 	}
 
-	private function _decrypt_filename( $filename='', $password='' ) {
+	private function _decrypt_filename( string $filename='', string $password='' ): string {
 		$pi = pathinfo( $filename );
 
 		$decrypted = $this->_base64url_decode( $pi['basename'] );
@@ -92,11 +84,11 @@ class Packman {
 		return $pi['dirname'] . DIRECTORY_SEPARATOR . $decrypted;
 	}
 
-	private function _base64url_encode( $data ) {
+	private function _base64url_encode( string $data ): string {
 		return rtrim( strtr( base64_encode( $data ), '+/', '-_' ), '=' );
 	}
 
-	private function _base64url_decode( $data ) {
+	private function _base64url_decode( string $data ): string {
 		return base64_decode(
 			strtr( $data, '-_', '+/' ) .
 			str_repeat( '=', 3 - ( 3 + strlen( $data ) ) % 4 )

@@ -1,3 +1,4 @@
 @echo off
-php "%~dp0index.php" "encrypt" "%~f1"
+set /p pw="Password: "
+php "%~dp0index.php" "encrypt" "%~f1" "%pw%"
 pause
