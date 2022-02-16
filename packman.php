@@ -1,98 +1,138 @@
-<?
+<?php
 class Packman {
-	private $_algorythm = '';
-	private $_digest_size = 0;
 
-	function __construct( string $algorytm='md5' ) {
-		if ( !in_array( $algorytm, hash_algos() ) ) {
-			throw new Exception( 'Unknown hashing algorythm.' );
-		}
+	static function encryptFile(
+		string $filename,
+		string $password,
+		string $algorythm='md5',
+		int $randomBytesLength=64,
+	): void {
+		self::_assert(file_exists($filename) ?: 'File not found.');
+		self::_assert(!empty($password) ?: 'Password cannot be empty.');
+		self::_assert($randomBytesLength >= 0 ?: 'Incorrect random bytes length.');
 
-		$this->_algorythm = $algorytm;
-		$this->_digest_size = strlen( hash( $this->_algorythm, '', $row=true ) );
+		$pathinfo = pathinfo($filename);
+		$body = file_get_contents($filename);
+
+		$header = [];
+		$header['algorythm'] = $algorythm;
+		$header['digest_size'] = self::_getDigestSize($header['algorythm']);
+		$header['random_bytes'] = random_bytes($randomBytesLength);
+		$imprintBody = $header['random_bytes'] . $password . $pathinfo['basename'] . $body;
+		$header['imprint'] = hash($header['algorythm'], $imprintBody, $row=true);
+		$key = $header['random_bytes'] . $password . $header['imprint'];
+		$header['filename'] = $pathinfo['basename'];
+		
+		self::_encrypt($header, $header['filename'], md5($key) . $key);
+		self::_encrypt($header, $body, $key);
+
+		file_put_contents(
+			$pathinfo['dirname'] . DIRECTORY_SEPARATOR . md5($header['random_bytes']),
+			self::_packHeader($header) . $body,
+		);
 	}
 
-	function read_password( string $prompt='' ): string {
-		if ( !empty( $prompt ) ) echo $prompt;
+	static function decryptFile(string $filename, string $password): void {
+		self::_assert(file_exists($filename) ?: 'File not found.');
+		self::_assert(!empty($password) ?: 'Password cannot be empty.');
+		
+		$pathinfo = pathinfo($filename);
+		$content = file_get_contents($filename);
+
+		$header = [];
+		$body = substr($content, self::_unpackHeader($header, $content));
+		$key = $header['random_bytes'] . $password . $header['imprint'];
+
+		self::_encrypt($header, $header['filename'], md5($key) . $key);
+		self::_encrypt($header, $body, $key);
+
+		$imprintBody = $header['random_bytes'] . $password . $header['filename'] . $body;
+		$imprint = hash($header['algorythm'], $imprintBody, $row=true);
+
+		self::_assert($imprint === $header['imprint'] ?: 'Decryption failed.');
+
+		file_put_contents(
+			$pathinfo['dirname'] . DIRECTORY_SEPARATOR . $header['filename'],
+			$body,
+		);
+	}
+
+	static function readPassword(string $prompt=''): string {
+		if (!empty($prompt)) echo $prompt;
 
 		$password = readline();
 
-		if ( empty( $password ) ) {
-			throw new Exception( 'Empty password.' );
-		}
+		self::_assert(!empty($password) ?: 'Password cannot be empty.');
 
 		return $password;
 	}
 
-	function encrypt_file( string $filename='', string $password='' ): void {
-		$content = file_get_contents( $filename );
-		$imprint = hash( $this->_algorythm, $password . $content, $row=true );
-		$encrypted = $this->encrypt( $content, $password . $imprint ) . $imprint;
-		$filename = $this->_encrypt_filename( $filename, md5( $password . $imprint ) );
-
-		file_put_contents( $filename, $encrypted );
-	}
-
-	function decrypt_file( string $filename='', string $password='' ): void {
-		$content = file_get_contents( $filename );
-		$imprint = substr( $content, -$this->_digest_size, $this->_digest_size );
-		$content = substr( $content, 0, -$this->_digest_size );
-		$decrypted = $this->encrypt( $content, $password . $imprint );
-		$current_imprint = hash( $this->_algorythm, $password . $decrypted, $row=true );
-
-		if ( $imprint !== $current_imprint ) {
-			throw new Exception( 'Decryption failed.' );
-		}
-
-		$filename = $this->_decrypt_filename( $filename, md5( $password . $imprint ) );
-
-		file_put_contents( $filename, $decrypted );
-	}
-
-	function encrypt( string &$message='', string $password='' ): string {
-		$size = strlen( $message );
-		$size = $size + ( $this->_digest_size - ( $size % $this->_digest_size ) );
+	private static function _encrypt(array &$header, string &$message, string $password): void {
+		$size = strlen($message);
+		$size = $size + ($header['digest_size'] - ($size % $header['digest_size']));
 
 		$key = '';
-		$hash = hash( $this->_algorythm, $password, $row=true );
+		$hash = hash($header['algorythm'], $password, $row=true);
 
-		for ( $i = 0; $i < $size; $i += $this->_digest_size ) {
-			$hash = hash( $this->_algorythm, $password . $hash, $row=true );
+		for ($i = 0; $i < $size; $i += $header['digest_size']) {
+			$hash = hash($header['algorythm'], $password . $hash, $row=true);
 			$key .= $hash;
 		}
 
-		return $message ^ $key;
+		$message ^= $key;
 	}
 
-	private function _encrypt_filename( string $filename='', string $password='' ): string {
-		$pi = pathinfo( $filename );
+	private static function _packHeader(array &$header): string {
+		$bAlgorythmLength = pack('C', strlen($header['algorythm']));
+		$bFilenameLength = pack('N', strlen($header['filename']));
+		$bRandomBytesLength = pack('N', strlen($header['random_bytes']));
 
-		$encrypted = $this->encrypt( $pi['basename'], $password );
-		$encrypted = substr( $encrypted, 0, strlen( $pi['basename'] ) );
-		$encrypted = $this->_base64url_encode( $encrypted );
-
-		return $pi['dirname'] . DIRECTORY_SEPARATOR . $encrypted;
+		return implode( '', [
+			$bAlgorythmLength, $header['algorythm'],
+			$bFilenameLength, $header['filename'],
+			$bRandomBytesLength, $header['random_bytes'],
+			$header['imprint'],
+		]);
 	}
 
-	private function _decrypt_filename( string $filename='', string $password='' ): string {
-		$pi = pathinfo( $filename );
+	private static function _unpackHeader(array &$header, string &$content): int {
+		$pos = 0;
 
-		$decrypted = $this->_base64url_decode( $pi['basename'] );
-		$decrypted = $this->encrypt( $decrypted, $password );
-		$decrypted = substr( $decrypted, 0, strlen( $pi['basename'] ) );
+		$algorythmLength = unpack('C', substr($content, $pos, 1))[1];
+		$pos += 1;
+		$header['algorythm'] = substr($content, $pos, $algorythmLength);
+		$pos += $algorythmLength;
 
-		return $pi['dirname'] . DIRECTORY_SEPARATOR . $decrypted;
+		$header['digest_size'] = self::_getDigestSize($header['algorythm']);
+		
+		$filenameLength = unpack('N', substr($content, $pos, 4))[1];
+		$pos += 4;
+		$header['filename'] = substr($content, $pos, $filenameLength);
+		$pos += $filenameLength;
+
+		$randomBytesLength = unpack('N', substr($content, $pos, 4))[1];
+		$pos += 4;
+		$header['random_bytes'] = substr($content, $pos, $randomBytesLength);
+		$pos += $randomBytesLength;
+		
+		$header['imprint'] = substr($content, $pos, $header['digest_size']);
+		$pos += $header['digest_size'];
+
+		return $pos;
 	}
 
-	private function _base64url_encode( string $data ): string {
-		return rtrim( strtr( base64_encode( $data ), '+/', '-_' ), '=' );
+	private static function _getDigestSize(string $algorythm): int {
+		self::_assert(in_array($algorythm, hash_algos()) ?: 'Unknown hashing algorythm.');
+
+		return strlen(hash($algorythm, '', $row=true));
 	}
 
-	private function _base64url_decode( string $data ): string {
-		return base64_decode(
-			strtr( $data, '-_', '+/' ) .
-			str_repeat( '=', 3 - ( 3 + strlen( $data ) ) % 4 )
-		);
+	private static function _assert(bool|string $v): void {
+		if ($v === true) return;
+
+		$v = ($v === false) ? 'Assertion failed.' : $v;
+
+		throw new Exception($v);
 	}
 
 }
